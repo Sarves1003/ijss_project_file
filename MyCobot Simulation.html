@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myCobot 280 - 6 DOF Pick & Place Simulation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            overflow: hidden; 
+            background: #060613; 
+            font-family: 'Outfit', sans-serif; 
+            color: #e2e8f0;
+        }
+        
+        #main-container { display: flex; width: 100vw; height: 100vh; }
+        #viewer { flex: 1; position: relative; background: #060613; }
+        
+        #info-overlay { 
+            position: absolute; 
+            top: 20px; 
+            left: 20px; 
+            color: #00ff88; 
+            pointer-events: none; 
+            z-index: 5;
+            background: rgba(6, 6, 19, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+        }
+        #info-overlay h2 { 
+            font-size: 16px; 
+            font-weight: 700; 
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            background: linear-gradient(90deg, #00ff88, #00e1ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #info-overlay p {
+            font-size: 11px;
+            color: #8899bb;
+        }
+        
+        #bendIndicator { 
+            position: absolute; 
+            top: 25px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            color: #ffaa00; 
+            font-size: 14px; 
+            font-weight: 600; 
+            background: rgba(6, 6, 19, 0.85); 
+            backdrop-filter: blur(8px);
+            padding: 8px 24px; 
+            border-radius: 30px; 
+            z-index: 10; 
+            border: 1px solid #ffaa00; 
+            box-shadow: 0 0 15px rgba(255, 170, 0, 0.2);
+            display: none; 
+            pointer-events: none; 
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+        
+        #camera-panel { 
+            width: 400px; 
+            min-width: 400px; 
+            background: rgba(10, 10, 30, 0.6); 
+            backdrop-filter: blur(20px);
+            border-left: 1px solid rgba(255, 255, 255, 0.08); 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 16px; 
+            max-height: 100vh; 
+            overflow-y: auto; 
+            box-shadow: -10px 0 40px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        #camera-panel h3 { 
+            color: #00e1ff; 
+            font-size: 14px; 
+            font-weight: 600; 
+            text-align: center; 
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        #camera-feed { 
+            width: 100%; 
+            aspect-ratio: 4/3; 
+            background: #03030d; 
+            border-radius: 14px; 
+            border: 1px solid rgba(0, 225, 255, 0.15); 
+            overflow: hidden; 
+            position: relative; 
+            box-shadow: inset 0 0 20px rgba(0, 225, 255, 0.05);
+        }
+        #camera-feed canvas { width: 100%; height: 100%; display: block; }
+        #camera-overlay { 
+            position: absolute; 
+            top: 12px; 
+            left: 12px; 
+            color: #00ff88; 
+            font-size: 10px; 
+            font-family: monospace; 
+            background: rgba(6, 6, 19, 0.7); 
+            backdrop-filter: blur(4px);
+            padding: 4px 10px; 
+            border-radius: 6px; 
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            letter-spacing: 1px;
+        }
+        
+        #detection-stats { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 10px; 
+            background: rgba(255, 255, 255, 0.03); 
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px; 
+            padding: 14px; 
+        }
+        #detection-stats .stat { 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            font-size: 13px; 
+            color: #8899bb; 
+        }
+        #detection-stats .stat .dot { 
+            width: 10px; 
+            height: 10px; 
+            border-radius: 50%; 
+            display: inline-block; 
+        }
+        #detection-stats .stat .dot.red { background: #ff3355; box-shadow: 0 0 10px rgba(255,51,85,0.6); }
+        #detection-stats .stat .dot.blue { background: #3388ff; box-shadow: 0 0 10px rgba(51,136,255,0.6); }
+        #detection-stats .stat .count { 
+            color: #ffffff; 
+            font-weight: 700; 
+            font-size: 18px; 
+        }
+        
+        #control-panel { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            background: rgba(255, 255, 255, 0.03); 
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px; 
+            padding: 14px; 
+        }
+        #control-panel .row { display: flex; gap: 10px; }
+        #control-panel button { 
+            flex: 1; 
+            padding: 12px 14px; 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            border-radius: 10px; 
+            font-size: 13px; 
+            font-weight: 600; 
+            color: white;
+            cursor: pointer; 
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        #control-panel button:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        #control-panel button:active {
+            transform: translateY(0);
+        }
+        #control-panel button:disabled { 
+            opacity: 0.25; 
+            cursor: not-allowed; 
+            transform: none; 
+            box-shadow: none !important;
+        }
+        
+        .btn-red { background: linear-gradient(135deg, #ff3355, #cc1133); box-shadow: 0 4px 15px rgba(255, 51, 85, 0.3); }
+        .btn-red:hover { box-shadow: 0 6px 20px rgba(255, 51, 85, 0.5) !important; border-color: rgba(255,51,85,0.4); }
+        .btn-blue { background: linear-gradient(135deg, #3388ff, #1155cc); box-shadow: 0 4px 15px rgba(51, 136, 255, 0.3); }
+        .btn-blue:hover { box-shadow: 0 6px 20px rgba(51, 136, 255, 0.5) !important; border-color: rgba(51,136,255,0.4); }
+        
+        .btn-green { background: linear-gradient(135deg, #00ff88, #00aa55); color: #060613 !important; font-weight: 700 !important; box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3); }
+        .btn-green:hover { box-shadow: 0 6px 20px rgba(0, 255, 136, 0.5) !important; border-color: rgba(0, 255, 136, 0.4); }
+        .btn-orange { background: linear-gradient(135deg, #ff9933, #d46600); box-shadow: 0 4px 15px rgba(255, 153, 51, 0.3); }
+        .btn-orange:hover { box-shadow: 0 6px 20px rgba(255, 153, 51, 0.5) !important; border-color: rgba(255,153,51,0.4); }
+        
+        #status-bar { 
+            display: flex; 
+            flex-direction: column;
+            gap: 8px;
+            padding: 14px; 
+            background: rgba(255, 255, 255, 0.03); 
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px; 
+            font-size: 12px; 
+        }
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #status-bar .status-text { 
+            font-weight: 600; 
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #status-bar .status-text .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            background: #8899bb;
+        }
+        #status-bar .status-text.idle { color: #8899bb; }
+        #status-bar .status-text.idle .status-dot { background: #8899bb; box-shadow: 0 0 8px #8899bb; }
+        #status-bar .status-text.working { color: #00e1ff; }
+        #status-bar .status-text.working .status-dot { background: #00e1ff; box-shadow: 0 0 10px #00e1ff; animation: pulse 1.5s infinite; }
+        #status-bar .status-text.done { color: #00ff88; }
+        #status-bar .status-text.done .status-dot { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
+        #status-bar .status-text.error { color: #ff3355; }
+        #status-bar .status-text.error .status-dot { background: #ff3355; box-shadow: 0 0 8px #ff3355; }
+        
+        #status-bar .joint-angles { 
+            color: #8899bb; 
+            font-family: monospace; 
+            font-size: 11px; 
+            background: rgba(0,0,0,0.2);
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.02);
+            width: 100%;
+            text-align: center;
+        }
+        #status-bar .gripper-status { 
+            color: #00ff88; 
+            font-size: 11px; 
+            font-weight: 600;
+            padding: 3px 10px; 
+            border-radius: 6px; 
+            border: 1px solid rgba(0, 255, 136, 0.2); 
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="main-container">
+    <div id="viewer">
+        <div id="info-overlay">
+            <h2>🤖 myCobot 280 - 6 DOF Pick & Place</h2>
+            <p>Left Drag to Orbit · Right Drag to Pan · Scroll to Zoom</p>
+        </div>
+        <div id="bendIndicator">🎯 REACHING TARGET!</div>
+    </div>
+    
+    <div id="camera-panel">
+        <h3>📷 AI VISION SYSTEM</h3>
+        <div id="camera-feed">
+            <canvas id="cameraCanvas"></canvas>
+            <div id="camera-overlay">ROI: TRAY AREA</div>
+        </div>
+        <div id="detection-stats">
+            <div class="stat"><span class="dot red"></span> RED: <span class="count" id="redDetected">0</span></div>
+            <div class="stat"><span class="dot blue"></span> BLUE: <span class="count" id="blueDetected">0</span></div>
+            <div class="stat" style="grid-column: span 2; display: flex; justify-content: space-between;">
+                <span>📐 ROI Objects:</span>
+                <span class="count" id="roiCount">0</span>
+            </div>
+        </div>
+        <div id="control-panel">
+            <div class="row">
+                <button class="btn-red" id="pickRedBtn">🔴 Pick RED</button>
+                <button class="btn-blue" id="pickBlueBtn">🔵 Pick BLUE</button>
+            </div>
+            <div class="row">
+                <button class="btn-green" id="autoBtn">🔄 Auto Sort</button>
+                <button class="btn-orange" id="resetBtn">⟳ Reset</button>
+            </div>
+        </div>
+        <div id="status-bar">
+            <div class="status-row">
+                <span class="status-text idle" id="statusText"><span class="status-dot"></span>🔄 IDLE</span>
+                <span class="gripper-status" id="gripperStatus">✊ OPEN</span>
+            </div>
+            <span class="joint-angles" id="angleDisplay">J1-J6 Ready</span>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const container = document.getElementById('viewer');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060613);
+
+// Perspective Camera
+const camera = new THREE.PerspectiveCamera(40, container.clientWidth/container.clientHeight, 1, 2000);
+camera.position.set(450, 300, 500);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+// Orbit Controls
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
+controls.minDistance = 150;
+controls.maxDistance = 1000;
+controls.target.set(0, 100, 0);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x223355, 0.6));
+const light = new THREE.DirectionalLight(0xffffff, 1.2);
+light.position.set(300, 500, 200); 
+light.castShadow = true; 
+light.shadow.mapSize.width = 2048;
+light.shadow.mapSize.height = 2048;
+light.shadow.bias = -0.001;
+scene.add(light);
+
+const rimLight = new THREE.DirectionalLight(0x00e1ff, 0.4);
+rimLight.position.set(-300, 200, -200);
+scene.add(rimLight);
+
+const grid = new THREE.GridHelper(800, 30, 0x00e1ff, 0x112244); 
+grid.position.y = -5; 
+scene.add(grid);
+
+// CONVEYOR TRAY WITH MOVING TEXTURE
+const TRAY_Y = 5;
+function createBeltTexture() {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0f0f20'; ctx.fillRect(0, 0, 64, 64);
+    ctx.strokeStyle = '#223355'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 32); ctx.lineTo(64, 32);
+    for (let x = 0; x <= 64; x += 16) {
+        ctx.moveTo(x, 0); ctx.lineTo(x, 64);
+    }
+    ctx.stroke();
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(10, 2);
+    return t;
+}
+const beltTexture = createBeltTexture();
+const tray = new THREE.Mesh(
+    new THREE.BoxGeometry(300, 5, 80), 
+    new THREE.MeshStandardMaterial({ map: beltTexture, metalness: 0.1, roughness: 0.8 })
+);
+tray.position.set(-50, TRAY_Y-2.5, 0); 
+tray.receiveShadow = true; 
+scene.add(tray);
+
+// Stationary guardrails
+[-42, 42].forEach(z => {
+    const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(300, 8, 4),
+        new THREE.MeshStandardMaterial({ color: 0x2d3748, metalness: 0.7, roughness: 0.2 })
+    );
+    rail.position.set(-50, TRAY_Y + 1, z);
+    rail.castShadow = true;
+    scene.add(rail);
+});
+
+// Palletizing Containers (Hollow Containers)
+const RED_BOX = new THREE.Vector3(120, 0, -80);
+const BLUE_BOX = new THREE.Vector3(120, 0, 80);
+
+function createContainer(colorValue, x, z, name) {
+    const containerGroup = new THREE.Group();
+    containerGroup.position.set(x, 0, z);
+    
+    // Bottom
+    const bottom = new THREE.Mesh(
+        new THREE.BoxGeometry(90, 4, 90), 
+        new THREE.MeshStandardMaterial({ color: colorValue, metalness: 0.5, roughness: 0.3, transparent: true, opacity: 0.5 })
+    );
+    bottom.position.y = 2;
+    bottom.receiveShadow = true;
+    containerGroup.add(bottom);
+    
+    // Walls
+    const wallMaterial = new THREE.MeshStandardMaterial({ color: colorValue, metalness: 0.6, roughness: 0.2, transparent: true, opacity: 0.35 });
+    
+    const left = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 90), wallMaterial);
+    left.position.set(-43, 15, 0);
+    left.castShadow = true; left.receiveShadow = true;
+    containerGroup.add(left);
+    
+    const right = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 90), wallMaterial);
+    right.position.set(43, 15, 0);
+    right.castShadow = true; right.receiveShadow = true;
+    containerGroup.add(right);
+    
+    const front = new THREE.Mesh(new THREE.BoxGeometry(90, 30, 4), wallMaterial);
+    front.position.set(0, 15, 43);
+    front.castShadow = true; front.receiveShadow = true;
+    containerGroup.add(front);
+    
+    const back = new THREE.Mesh(new THREE.BoxGeometry(90, 30, 4), wallMaterial);
+    back.position.set(0, 15, -43);
+    back.castShadow = true; back.receiveShadow = true;
+    containerGroup.add(back);
+    
+    scene.add(containerGroup);
+    
+    // Front Label plate
+    const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#060613'; ctx.fillRect(0, 0, 128, 64);
+    ctx.strokeStyle = name === 'RED' ? '#ff3355' : '#3388ff';
+    ctx.lineWidth = 4; ctx.strokeRect(2, 2, 124, 60);
+    ctx.fillStyle = name === 'RED' ? '#ff3355' : '#3388ff';
+    ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(name, 64, 32);
+    
+    const t = new THREE.CanvasTexture(c);
+    const label = new THREE.Mesh(
+        new THREE.PlaneGeometry(35, 18), 
+        new THREE.MeshBasicMaterial({ map: t, transparent: true, side: THREE.DoubleSide })
+    );
+    label.position.set(x, 15, z + 45.2);
+    scene.add(label);
+}
+
+createContainer(0x441122, RED_BOX.x, RED_BOX.z, 'RED');
+createContainer(0x112244, BLUE_BOX.x, BLUE_BOX.z, 'BLUE');
+
+// ============================================================
+// myCobot 280 6-DOF ROBOT MODEL
+// ============================================================
+const robot = new THREE.Group(); 
+scene.add(robot);
+const joints = [];
+let leftFinger, rightFinger, gripperGroup;
+const L1 = 85, L2 = 85, L3 = 85, L4 = 50;
+const BASE_H = 130;
+
+function buildRobot() {
+    while(robot.children.length) robot.remove(robot.children[0]);
+    joints.length = 0; 
+    gripperGroup = null;
+    
+    // Base pedestal
+    const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(40, 45, 30, 32),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 })
+    );
+    base.position.y = 15; 
+    base.castShadow = true; 
+    robot.add(base);
+    
+    const colors = [0x00ff88, 0x00e1ff, 0x00a2ff, 0x3b82f6, 0x6366f1, 0x4f46e5];
+    let parent = robot, pos = new THREE.Vector3(0, BASE_H / 2, 0);
+    
+    for (let i = 0; i < 6; i++) {
+        const group = new THREE.Group(); 
+        group.position.copy(pos); 
+        parent.add(group);
+        
+        // Shiny robotic joints
+        const s = new THREE.Mesh(
+            new THREE.SphereGeometry(17 - i * 1.2, 24, 24),
+            new THREE.MeshStandardMaterial({
+                color: colors[i],
+                metalness: 0.8,
+                roughness: 0.15,
+                emissive: colors[i],
+                emissiveIntensity: 0.1
+            })
+        );
+        s.castShadow = true; 
+        group.add(s);
+        
+        if (i < 5) {
+            const len = [L1, L2, L3, 85, L4][i];
+            const link = new THREE.Mesh(
+                new THREE.BoxGeometry(14 - i * 0.5, len, 14 - i * 0.5),
+                new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.7, roughness: 0.3 })
+            );
+            link.position.y = len / 2;
+            link.castShadow = true;
+            group.add(link);
+            pos = new THREE.Vector3(0, len, 0);
+        } else {
+            // Gripper assembly (End Effector)
+            gripperGroup = group;
+            
+            const gB = new THREE.Mesh(
+                new THREE.BoxGeometry(14, 6, 14), 
+                new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.2 })
+            );
+            gB.position.y = 10;
+            gB.castShadow = true;
+            group.add(gB);
+            
+            const fM = new THREE.MeshStandardMaterial({ 
+                color: 0x00ff88, 
+                metalness: 0.7, 
+                roughness: 0.1,
+                emissive: 0x00ff88, 
+                emissiveIntensity: 0.15 
+            });
+            
+            leftFinger = new THREE.Mesh(new THREE.BoxGeometry(3, 14, 4), fM);
+            leftFinger.position.set(-6, 6, 0);
+            leftFinger.castShadow = true;
+            group.add(leftFinger);
+            
+            rightFinger = new THREE.Mesh(new THREE.BoxGeometry(3, 14, 4), fM);
+            rightFinger.position.set(6, 6, 0);
+            rightFinger.castShadow = true;
+            group.add(rightFinger);
+        }
+        
+        joints.push(group); 
+        parent = group;
+    }
+}
+buildRobot();
+
+// Helper to find the actual world position of the gripper grab center
+function getGrabCenterPos() {
+    const p = new THREE.Vector3(0, 6, 0);
+    if (gripperGroup) {
+        gripperGroup.localToWorld(p);
+    }
+    return p;
+}
+
+// ============================================================
+// GEOMETRICALLY CORRECT 6-DOF INVERSE KINEMATICS (Wrist Partition)
+// ============================================================
+function solveIK6DOF(targetPos, targetNormal, targetYaw = 0) {
+    const L_hand = 148; // Wrist Pitch (J4) to fingertips center offset
+    
+    // 1. Position of J4 (wrist pitch joint)
+    const J4_pos = new THREE.Vector3().copy(targetPos).sub(targetNormal.clone().multiplyScalar(L_hand));
+    
+    // 2. Base Yaw (J1)
+    const j1 = Math.atan2(J4_pos.x, J4_pos.z);
+    
+    // 3. Project J4_pos into vertical 2D plane of the arm
+    const r = Math.sqrt(J4_pos.x * J4_pos.x + J4_pos.z * J4_pos.z);
+    const h = J4_pos.y - 150; // J2 Shoulder height is at y=150
+    
+    // 4. Solve 2-link planar IK for J2 and J3
+    const a1 = 85; 
+    const a2 = 85; 
+    const d2 = r * r + h * h;
+    const d = Math.sqrt(d2);
+    
+    // Limit clamp
+    const maxReach = a1 + a2;
+    const minReach = 20;
+    const dClamped = Math.max(minReach, Math.min(maxReach, d));
+    
+    const cos_j3 = (dClamped * dClamped - a1 * a1 - a2 * a2) / (2 * a1 * a2);
+    // Elbow up configuration (negative rotation)
+    const j3 = -Math.acos(Math.max(-1, Math.min(1, cos_j3)));
+    
+    const A = a1 + a2 * Math.cos(j3);
+    const B = a2 * Math.sin(j3);
+    const j2 = Math.atan2(A * r - B * h, B * r + A * h);
+    
+    // 5. Wrist Pitch (J4)
+    // Project targetNormal into the vertical arm plane
+    const normal_r = targetNormal.x * Math.sin(j1) + targetNormal.z * Math.cos(j1);
+    const theta_pitch = Math.atan2(normal_r, targetNormal.y);
+    
+    // J4 angle is the difference to reach the target pitch
+    let j4 = theta_pitch - j2 - j3;
+    j4 = Math.atan2(Math.sin(j4), Math.cos(j4)); // Clamp inside [-PI, PI]
+    
+    // 6. Wrist Yaw (J5) and Gripper Roll (J6)
+    let j5 = 0;
+    let j6 = 0;
+    
+    // If pointing straight down (vertical grip)
+    if (Math.abs(targetNormal.y) > 0.9) {
+        // J5 acts as yaw relative rotation to align with cube yaw
+        let diff = (targetYaw - j1) % (Math.PI / 2);
+        if (diff > Math.PI / 4) diff -= Math.PI / 2;
+        if (diff < -Math.PI / 4) diff += Math.PI / 2;
+        j5 = diff;
+        j6 = 0;
+    } else {
+        // Approximated orientation for non-vertical normals
+        j5 = Math.atan2(targetNormal.x, targetNormal.z);
+        j6 = 0;
+    }
+    
+    return [j1, j2, j3, j4, j5, j6];
+}
+
+// ============================================================
+// SIMULATION STATE & SORTING SYSTEM
+// ============================================================
+let angles = [0, 0, 0, 0, 0, 0];
+let targetAngles = [0, 0, 0, 0, 0, 0];
+let smoothAngles = [0, 0, 0, 0, 0, 0];
+let pickPhase = 0;
+let pickTimer = 0;
+let targetObject = null;
+let grabbedObject = null;
+let isBusy = false;
+let autoMode = false;
+let autoTimer = 0;
+let sortedRed = 0;
+let sortedBlue = 0;
+const TOTAL_CUBES = 10;
+
+function updateRobot() {
+    const spd = 0.22; // High-speed tracking
+    for(let i = 0; i < 6; i++) {
+        smoothAngles[i] += (targetAngles[i] - smoothAngles[i]) * Math.min(spd, 0.4);
+        angles[i] = smoothAngles[i];
+    }
+    
+    // Apply rotations
+    joints[0].rotation.y = angles[0];
+    joints[1].rotation.x = angles[1];
+    joints[2].rotation.x = angles[2];
+    joints[3].rotation.x = angles[3];
+    joints[4].rotation.y = angles[4];
+    joints[5].rotation.z = angles[5];
+    
+    // Update angular display
+    const d = document.getElementById('angleDisplay');
+    d.textContent = `J1:${(angles[0]*180/Math.PI).toFixed(0)}° J2:${(angles[1]*180/Math.PI).toFixed(0)}° J3:${(angles[2]*180/Math.PI).toFixed(0)}° J4:${(angles[3]*180/Math.PI).toFixed(0)}° J5:${(angles[4]*180/Math.PI).toFixed(0)}°`;
+    
+    // Reaching target notification overlay
+    const bend = document.getElementById('bendIndicator');
+    bend.style.display = (isBusy && (pickPhase !== 2 && pickPhase !== 6)) ? 'block' : 'none';
+}
+
+// ============================================================
+// CUBES MANAGEMENT
+// ============================================================
+const objects = [];
+const RED = 0xff3355;
+const BLUE = 0x3388ff;
+
+function createCube(color, x, z) {
+    const size = 16 + Math.random() * 2;
+    const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(size, size, size),
+        new THREE.MeshStandardMaterial({ 
+            color, 
+            metalness: 0.2, 
+            roughness: 0.5, 
+            emissive: color, 
+            emissiveIntensity: 0.08 
+        })
+    );
+    mesh.position.set(x || -200 + Math.random() * 100, TRAY_Y + size / 2, z || (Math.random() - 0.5) * 35);
+    // Cubes sit flat, only rotated around Y-axis
+    mesh.rotation.set(0, Math.random() * Math.PI * 2, 0);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { size, color, picked: false, sorted: false };
+    scene.add(mesh);
+    objects.push(mesh);
+    return mesh;
+}
+
+for(let i = 0; i < TOTAL_CUBES; i++) createCube(RED, -180 + i * 28, (Math.random() - 0.5) * 20);
+for(let i = 0; i < TOTAL_CUBES; i++) createCube(BLUE, -165 + i * 28, (Math.random() - 0.5) * 20);
+
+// ============================================================
+// VIRTUAL AI VISION CAMERA PROCESSING
+// ============================================================
+const camCanvas = document.getElementById('cameraCanvas');
+const ctx = camCanvas.getContext('2d');
+camCanvas.width = 380;
+camCanvas.height = 285;
+const ROI = { x: 20, y: 55, w: 340, h: 90 };
+
+let laserSweep = 0;
+
+function processCamera() {
+    ctx.fillStyle = '#060613'; ctx.fillRect(0, 0, camCanvas.width, camCanvas.height);
+    
+    // Draw alignment grids
+    ctx.strokeStyle = 'rgba(0, 225, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(camCanvas.width / 2, 0); ctx.lineTo(camCanvas.width / 2, camCanvas.height);
+    ctx.moveTo(0, camCanvas.height / 2); ctx.lineTo(camCanvas.width, camCanvas.height / 2);
+    ctx.stroke();
+    
+    // ROI Box
+    ctx.fillStyle = 'rgba(34, 51, 85, 0.15)'; ctx.fillRect(ROI.x, ROI.y, ROI.w, ROI.h);
+    ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2; ctx.strokeRect(ROI.x, ROI.y, ROI.w, ROI.h);
+    
+    ctx.fillStyle = '#00ff88'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText('📐 DETECT ZONE (ROI)', ROI.x + 8, ROI.y + 15);
+    ctx.fillText('CAMERA: ON', 15, 25);
+    ctx.fillStyle = '#00e1ff';
+    ctx.fillText('RECOGNITION: ACTIVE', 280, 25);
+    
+    // Scanning laser sweep
+    laserSweep = (laserSweep + 1.5) % ROI.h;
+    ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(ROI.x, ROI.y + laserSweep);
+    ctx.lineTo(ROI.x + ROI.w, ROI.y + laserSweep);
+    ctx.stroke();
+    
+    let rd = 0, bd = 0, rc = 0;
+    objects.filter(o => !o.userData.picked && !o.userData.sorted).forEach(obj => {
+        // Map 3D conveyor coordinates back to 2D camera viewport
+        const cx = ROI.x + 20 + ((obj.position.x + 200) / 150) * (ROI.w - 40);
+        const cy = ROI.y + 15 + ((obj.position.z + 35) / 70) * (ROI.h - 30);
+        
+        if (cx < ROI.x + 8 || cx > ROI.x + ROI.w - 8 || cy < ROI.y + 8 || cy > ROI.y + ROI.h - 8) return;
+        rc++;
+        const isRed = obj.userData.color === RED;
+        const colorHex = isRed ? '#ff3355' : '#3388ff';
+        
+        // Draw round bounding point
+        ctx.fillStyle = colorHex;
+        ctx.shadowColor = colorHex;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(isRed ? 'R' : 'B', cx, cy);
+        
+        if (isRed) rd++; else bd++;
+    });
+    
+    document.getElementById('redDetected').textContent = rd;
+    document.getElementById('blueDetected').textContent = bd;
+    document.getElementById('roiCount').textContent = rc;
+    
+    // Outline targeted object
+    if (targetObject && !targetObject.userData.picked) {
+        const cx = ROI.x + 20 + ((targetObject.position.x + 200) / 150) * (ROI.w - 40);
+        const cy = ROI.y + 15 + ((targetObject.position.z + 35) / 70) * (ROI.h - 30);
+        
+        ctx.strokeStyle = '#ffaa00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(cx - 15, cy - 15, 30, 30);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ffaa00';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('LOCKED', cx, cy - 18);
+    }
+}
+
+// ============================================================
+// PICK & PLACE CONTROLLER
+// ============================================================
+function countAvailable(color) {
+    let c = 0;
+    for(const o of objects) {
+        if(!o.userData.picked && !o.userData.sorted && o.userData.color === color) c++;
+    }
+    return c;
+}
+
+// Auto search within a strict pickup zone [-130, -50]
+function findObject(color) {
+    let best = null, bestX = -999;
+    for(const obj of objects) {
+        if(obj.userData.picked || obj.userData.sorted) continue;
+        if(obj.userData.color !== color) continue;
+        // Search window to pick up neatly
+        if(obj.position.x > bestX && obj.position.x > -130 && obj.position.x < -50) {
+            bestX = obj.position.x;
+            best = obj;
+        }
+    }
+    return best;
+}
+
+// Manual search looks at the whole reachable conveyor
+function findObjectManual(color) {
+    let best = null, bestX = -999;
+    for(const obj of objects) {
+        if(obj.userData.picked || obj.userData.sorted) continue;
+        if(obj.userData.color !== color) continue;
+        if(obj.position.x > bestX && obj.position.x < -50) {
+            bestX = obj.position.x;
+            best = obj;
+        }
+    }
+    return best;
+}
+
+function getNextAutoCube() {
+    const redRemaining = TOTAL_CUBES - sortedRed;
+    const blueRemaining = TOTAL_CUBES - sortedBlue;
+    let c = null;
+    if (redRemaining > 0 && blueRemaining > 0) {
+        c = Math.random() > 0.5 ? RED : BLUE;
+    } else if (redRemaining > 0) {
+        c = RED;
+    } else if (blueRemaining > 0) {
+        c = BLUE;
+    }
+    if (c !== null) {
+        return findObject(c);
+    }
+    return null;
+}
+
+function setStatus(t, type) {
+    const e = document.getElementById('statusText');
+    e.innerHTML = `<span class="status-dot"></span>${t}`;
+    e.className = 'status-text ' + (type || 'idle');
+}
+
+function startPick(color) {
+    if(isBusy) return;
+    const colorName = color === RED ? 'RED' : 'BLUE';
+    const sortedCount = color === RED ? sortedRed : sortedBlue;
+    
+    if (sortedCount >= TOTAL_CUBES) {
+        alert(`✅ All ${TOTAL_CUBES} ${colorName} cubes are successfully sorted!`);
+        return;
+    }
+    if (countAvailable(color) === 0) {
+        alert(`❌ No remaining ${colorName} cubes left on conveyor!`);
+        return;
+    }
+    
+    const t = findObjectManual(color);
+    if (!t) {
+        setStatus('❌ Error: Cube lost', 'error');
+        return;
+    }
+    
+    isBusy = true;
+    document.getElementById('pickRedBtn').disabled = true;
+    document.getElementById('pickBlueBtn').disabled = true;
+    
+    targetObject = t;
+    pickPhase = 0;
+    pickTimer = 0;
+    setStatus('🎯 APPROACHING ' + colorName, 'working');
+}
+
+function startAuto() {
+    if (autoMode) {
+        autoMode = false;
+        document.getElementById('autoBtn').textContent = '🔄 Auto Sort';
+        document.getElementById('autoBtn').className = 'btn-green';
+        document.getElementById('pickRedBtn').disabled = false; // Re-enable manual controls on stop
+        document.getElementById('pickBlueBtn').disabled = false; // Re-enable manual controls on stop
+        setStatus('⏸️ PAUSED', 'idle');
+        return;
+    }
+    if (sortedRed >= TOTAL_CUBES && sortedBlue >= TOTAL_CUBES) {
+        alert('🎉 Simulation complete! All cubes sorted.');
+        return;
+    }
+    
+    // Disable manual controls during auto mode
+    document.getElementById('pickRedBtn').disabled = true;
+    document.getElementById('pickBlueBtn').disabled = true;
+    
+    autoMode = true;
+    document.getElementById('autoBtn').textContent = '⏹️ Stop Auto';
+    document.getElementById('autoBtn').className = 'btn-orange';
+    autoTimer = 0;
+    setStatus('🔄 AUTO SORTING...', 'working');
+}
+
+function updateSorting(dt) {
+    pickTimer += dt;
+    
+    // Handle Auto Trigger loop when not busy
+    if (autoMode && !isBusy) {
+        const redRemaining = TOTAL_CUBES - sortedRed;
+        const blueRemaining = TOTAL_CUBES - sortedBlue;
+        let c = null;
+        if (redRemaining > 0 && blueRemaining > 0) {
+            c = Math.random() > 0.5 ? RED : BLUE;
+        } else if (redRemaining > 0) {
+            c = RED;
+        } else if (blueRemaining > 0) {
+            c = BLUE;
+        }
+        
+        if (c !== null) {
+            const t = findObject(c);
+            if (t) {
+                // Instantly trigger pick up sequence
+                isBusy = true;
+                targetObject = t;
+                pickPhase = 0;
+                pickTimer = 0;
+                setStatus('🎯 APPROACHING ' + (c === RED ? 'RED' : 'BLUE'), 'working');
+            } else {
+                // Standby hover above the conveyor belt waiting for a cube to roll in
+                setStatus('⏳ Waiting for cubes...', 'idle');
+                const standbyPos = new THREE.Vector3(-85, 120, 0);
+                const ik = solveIK6DOF(standbyPos, new THREE.Vector3(0, -1, 0), 0);
+                for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            }
+        }
+    }
+    
+    // Gripper animations (finger width)
+    const gripperSpd = 12 * dt;
+    let targetFingerOff = 6.0; // Open
+    
+    if (pickPhase === 2 || pickPhase === 3 || pickPhase === 4 || pickPhase === 5) {
+        targetFingerOff = 2.0; // Closed
+    }
+    
+    if (leftFinger && rightFinger) {
+        let curOff = -leftFinger.position.x;
+        curOff += (targetFingerOff - curOff) * Math.min(gripperSpd, 0.85);
+        leftFinger.position.x = -curOff;
+        rightFinger.position.x = curOff;
+        
+        const gs = document.getElementById('gripperStatus');
+        const isOpen = curOff > 4.5;
+        gs.textContent = isOpen ? '👐 OPEN' : '✊ CLOSED';
+        gs.style.color = isOpen ? '#00ff88' : '#ff3355';
+    }
+    
+    // Update attached cube
+    if (grabbedObject) {
+        grabbedObject.position.copy(getGrabCenterPos());
+        grabbedObject.quaternion.copy(gripperGroup.getWorldQuaternion(new THREE.Quaternion()));
+    }
+    
+    // If idle (target is null and auto mode is off), return to home rest position
+    if (!targetObject && !autoMode) {
+        if (isBusy) {
+            isBusy = false;
+            document.getElementById('pickRedBtn').disabled = false;
+            document.getElementById('pickBlueBtn').disabled = false;
+            setStatus('✅ Done!', 'done');
+            setTimeout(() => {
+                if (!isBusy && !autoMode) setStatus('🔄 IDLE', 'idle');
+            }, 1000);
+        }
+        
+        const hk = solveIK6DOF(new THREE.Vector3(120, 200, 0), new THREE.Vector3(0.5, -0.8, 0).normalize(), 0);
+        for (let i = 0; i < 6; i++) targetAngles[i] = hk[i];
+        return;
+    }
+    
+    if (!targetObject) return; // Exit if standby auto
+    
+    // Active sorting variables
+    const cn = targetObject.userData.color === RED ? 'RED' : 'BLUE';
+    const cubePos = targetObject.position.clone();
+    const pickPos = grabbedObject ? getGrabCenterPos() : new THREE.Vector3(cubePos.x, cubePos.y, cubePos.z);
+    
+    const dropBox = targetObject.userData.color === RED ? RED_BOX : BLUE_BOX;
+    const countInBox = targetObject.userData.color === RED ? sortedRed : sortedBlue;
+    
+    const col = countInBox % 2;
+    const row = Math.floor((countInBox % 4) / 2);
+    const level = Math.floor(countInBox / 4);
+    const size = targetObject.userData.size;
+    
+    const placePos = new THREE.Vector3(
+        dropBox.x + (col - 0.5) * 24,
+        dropBox.y + size / 2 + level * size + 4,
+        dropBox.z + (row - 0.5) * 24
+    );
+    
+    const hoverHeight = 90;
+    
+    // Spatial angular convergence check (very responsive: 0.04 threshold)
+    let anglesClose = true;
+    for (let i = 0; i < 6; i++) {
+        if (Math.abs(targetAngles[i] - smoothAngles[i]) > 0.04) {
+            anglesClose = false;
+            break;
+        }
+    }
+    
+    const bend = document.getElementById('bendIndicator');
+    
+    switch(pickPhase) {
+        case 0: { // Approach hover
+            setStatus('⬇️ APPROACHING ' + cn, 'working');
+            bend.textContent = '🎯 APPROACHING TARGET';
+            const ap = new THREE.Vector3(pickPos.x, pickPos.y + hoverHeight, pickPos.z);
+            const ik = solveIK6DOF(ap, new THREE.Vector3(0, -1, 0), targetObject.rotation.y);
+            for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            
+            if (anglesClose) { 
+                pickPhase = 1;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 1: { // Descend to pick
+            setStatus('👇 LOWERING TO GRAB', 'working');
+            bend.textContent = '👇 DESCENDING';
+            const ik = solveIK6DOF(pickPos, new THREE.Vector3(0, -1, 0), targetObject.rotation.y);
+            for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            
+            if (anglesClose) {
+                pickPhase = 2;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 2: { // Close gripper
+            setStatus('✊ GRASPING CUBE', 'working');
+            if (pickTimer > 0.25) { 
+                targetObject.userData.picked = true;
+                grabbedObject = targetObject;
+                pickPhase = 3;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 3: { // Lift pick
+            setStatus('⬆️ LIFTING CUBE', 'working');
+            bend.textContent = '⬆️ LIFTING';
+            const ap = new THREE.Vector3(pickPos.x, pickPos.y + hoverHeight, pickPos.z);
+            const ik = solveIK6DOF(ap, new THREE.Vector3(0, -1, 0), targetObject.rotation.y);
+            for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            
+            if (anglesClose) {
+                pickPhase = 4;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 4: { // Travel to box hover
+            setStatus('🔄 MOVING TO CONTAINER', 'working');
+            bend.textContent = '🔄 ROTATING';
+            const ap = new THREE.Vector3(placePos.x, placePos.y + hoverHeight, placePos.z);
+            const ik = solveIK6DOF(ap, new THREE.Vector3(0, -1, 0), 0);
+            for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            
+            if (anglesClose) {
+                pickPhase = 5;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 5: { // Descend into box
+            setStatus('⬇️ LOWERING INTO CONTAINER', 'working');
+            bend.textContent = '⬇️ PLACING';
+            const ik = solveIK6DOF(placePos, new THREE.Vector3(0, -1, 0), 0);
+            for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            
+            if (anglesClose) {
+                pickPhase = 6;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 6: { // Open gripper
+            setStatus('👐 RELEASING CUBE', 'working');
+            if (pickTimer > 0.25) { 
+                if (grabbedObject) {
+                    grabbedObject.position.copy(placePos);
+                    grabbedObject.rotation.set(0, 0, 0);
+                    grabbedObject.material.emissiveIntensity = 0.05;
+                    grabbedObject.userData.picked = false;
+                    grabbedObject.userData.sorted = true;
+                    
+                    if (grabbedObject.userData.color === RED) sortedRed++;
+                    else sortedBlue++;
+                    
+                    grabbedObject = null;
+                }
+                pickPhase = 7;
+                pickTimer = 0;
+            }
+            break;
+        }
+        case 7: { // Lift clear of container
+            setStatus('⬆️ LIFTING CLEAR', 'working');
+            bend.textContent = '⬆️ RECOVERING';
+            const ap = new THREE.Vector3(placePos.x, placePos.y + hoverHeight, placePos.z);
+            const ik = solveIK6DOF(ap, new THREE.Vector3(0, -1, 0), 0);
+            for (let i = 0; i < 6; i++) targetAngles[i] = ik[i];
+            
+            if (anglesClose) {
+                // Action completed for this target
+                pickPhase = 0;
+                pickTimer = 0;
+                
+                if (autoMode) {
+                    const nextCube = getNextAutoCube();
+                    if (nextCube) {
+                        targetObject = nextCube;
+                        setStatus('🎯 APPROACHING ' + (nextCube.userData.color === RED ? 'RED' : 'BLUE'), 'working');
+                    } else {
+                        targetObject = null;
+                        isBusy = false; // set isBusy to false to let standby hover take over
+                    }
+                } else {
+                    targetObject = null;
+                    // Do NOT set isBusy = false here! Let the "if (!targetObject && !autoMode)" block handle it and re-enable buttons!
+                }
+                
+                // Final completion alert
+                if (sortedRed >= TOTAL_CUBES && sortedBlue >= TOTAL_CUBES) {
+                    autoMode = false;
+                    document.getElementById('autoBtn').textContent = '🔄 Auto Sort';
+                    document.getElementById('autoBtn').className = 'btn-green';
+                    document.getElementById('pickRedBtn').disabled = false;
+                    document.getElementById('pickBlueBtn').disabled = false;
+                    setTimeout(() => alert('🎉 Palletizing process complete! All cubes sorted.'), 200);
+                }
+            }
+            break;
+        }
+    }
+}
+
+function updateTray(dt) {
+    for (const obj of objects) {
+        if (obj.userData.picked || obj.userData.sorted) continue;
+        
+        // Move conveyor belt objects
+        obj.position.x += 0.18 * dt * 30;
+        
+        // Recycle back to conveyor start if unpicked
+        if (obj.position.x > -50) {
+            obj.position.x = -200 + Math.random() * 80;
+            obj.position.z = (Math.random() - 0.5) * 35;
+            obj.rotation.set(0, Math.random() * Math.PI * 2, 0); // Flat on conveyor
+        }
+    }
+}
+
+function resetScene() {
+    autoMode = false; 
+    isBusy = false; 
+    sortedRed = 0; 
+    sortedBlue = 0;
+    
+    document.getElementById('autoBtn').textContent = '🔄 Auto Sort';
+    document.getElementById('autoBtn').className = 'btn-green';
+    document.getElementById('pickRedBtn').disabled = false;
+    document.getElementById('pickBlueBtn').disabled = false;
+    
+    for (const obj of objects) scene.remove(obj);
+    objects.length = 0;
+    
+    for (let i = 0; i < TOTAL_CUBES; i++) createCube(RED, -180 + i * 28, (Math.random() - 0.5) * 20);
+    for (let i = 0; i < TOTAL_CUBES; i++) createCube(BLUE, -165 + i * 28, (Math.random() - 0.5) * 20);
+    
+    targetObject = null; 
+    grabbedObject = null; 
+    pickPhase = 0; 
+    pickTimer = 0;
+    
+    for (let i = 0; i < 6; i++) {
+        targetAngles[i] = 0; 
+        smoothAngles[i] = 0;
+    }
+    
+    setStatus('🔄 Reset Complete', 'idle');
+}
+
+// Button Events
+document.getElementById('pickRedBtn').addEventListener('click', () => startPick(RED));
+document.getElementById('pickBlueBtn').addEventListener('click', () => startPick(BLUE));
+document.getElementById('autoBtn').addEventListener('click', startAuto);
+document.getElementById('resetBtn').addEventListener('click', resetScene);
+
+// Resize Listener
+window.addEventListener('resize', () => {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+});
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+let lastTime = 0;
+function animate(t) {
+    requestAnimationFrame(animate);
+    
+    const dt = lastTime ? Math.min((t - lastTime) / 1000, 0.05) : 0.016;
+    lastTime = t;
+    
+    // Update physical components
+    updateTray(dt);
+    updateSorting(dt);
+    updateRobot();
+    
+    // Render vision camera overlay
+    processCamera();
+    
+    // Scroll conveyor belt texture forward
+    if (beltTexture) {
+        beltTexture.offset.x -= 0.006 * dt * 30;
+    }
+    
+    // Orbit camera controls update
+    controls.update();
+    
+    renderer.render(scene, camera);
+}
+
+// Initial robot pose
+const hk = solveIK6DOF(new THREE.Vector3(120, 200, 0), new THREE.Vector3(0.5, -0.8, 0).normalize(), 0);
+for (let i = 0; i < 6; i++) {
+    targetAngles[i] = hk[i]; 
+    smoothAngles[i] = hk[i];
+}
+
+animate(0);
+</script>
+</body>
+</html>
